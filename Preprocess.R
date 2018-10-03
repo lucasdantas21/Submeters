@@ -1,5 +1,5 @@
 #packages
-pacman::p_load(readr, dplyr, tidyr, lubridate, data.table, chron, ggplot2)
+pacman::p_load(readr, dplyr, tidyr, lubridate, data.table, chron, ggplot2, lattice, grid, zoo)
 
 #set working directory
 setwd("D:/Lucas/UBIQUM/Modulo_3")
@@ -38,6 +38,9 @@ calendarHeat(dates=HPC$Date,
              values=HPC$Global_active_power,
              varname="Global Active Power")
 
+#NAs replaced by last value known
+HPC<-na.locf(HPC, na.rm = FALSE, maxgap = 1440)
+
 #NAs by zero
 HPC[is.na(HPC)] <- 0
 
@@ -47,45 +50,48 @@ HPC <- HPC %>%
   mutate(Global_reactive_power=Global_reactive_power/60)
 
 #new columns
-HPC$Hour <- hours(HPC$DateTime)
-HPC$Year <- years(HPC$DateTime)
-HPC$Month <- month(HPC$DateTime)
-HPC$Day <- days(HPC$DateTime)
-HPC$Global_power <- HPC$Global_active_power+HPC$Global_reactive_power
+HPC <- HPC %>%
+  mutate(Hour=lubridate::hour(DateTime))%>%
+  mutate(Year=lubridate::year(DateTime))%>%
+  mutate(Month=lubridate::month(DateTime,label = T, abbr = F,locale = "english"))%>%
+  mutate(Day=lubridate::day(DateTime))%>%
+  mutate(Weekday=lubridate::wday(DateTime, label = T, abbr = F, locale = "english"))%>%
+  mutate(Global_Power=Global_active_power+Global_reactive_power)%>%
+  mutate(Cost=Global_Power*0.1472)
 
+    
 #Filter per day
 HPC.day <- HPC%>%
-  select(Year, Month, Day, Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`)%>%
-  group_by(Year, Month, Day)%>%
-  summarise_at(vars(Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`), funs(sum))
-
+  select(Year, Month, Day, Weekday, Global_Power, Global_active_power, 
+         Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost)%>%
+  group_by(Year, Month, Day, Weekday)%>%
+  summarise_at(vars(Global_Power, Global_active_power, 
+                    Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost), funs(sum))
 
 #Filter por mes
 HPC.month <- HPC%>%
-select(Year, Month,Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`)%>%
+select(Year, Month,Global_Power, Global_active_power, 
+       Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost)%>%
   group_by(Year, Month)%>%
-  summarise_at(vars(Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`), funs(sum))
+  summarise_at(vars(Global_Power, Global_active_power, 
+                    Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost), funs(sum))
 
-#Build a 12 month comparison
-HPC.month.12 <- HPC.month%>%
-  select(Year, Month,Global_power, Global_active_power, 
-         Global_reactive_power, Kitchen, Laundry, `Air & Water`)%>%
-  diff()
-  
- 
-  
 
 #Filter per year
 HPC.year <- HPC%>%
-  select(Year, Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`)%>%
+  select(Year, Global_Power, Global_active_power, Global_reactive_power, 
+         Kitchen, Laundry, `Air & Water`, Cost)%>%
   group_by(Year)%>%
-  summarise_at(vars(Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`), funs(sum))
+  summarise_at(vars(Global_Power, Global_active_power, 
+                    Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost), funs(sum))
 
 #Filter per hour
 HPC.hour <- HPC%>%
-  select(Year, Month, Day, Hour, Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`)%>%
+  select(Year, Month, Day, Hour, Global_Power, Global_active_power, 
+         Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost)%>%
   group_by(Year, Month, Day, Hour)%>%
-  summarise_at(vars(Global_power, Global_active_power, Global_reactive_power, Kitchen, Laundry, `Air & Water`), funs(sum))
+  summarise_at(vars(Global_Power, Global_active_power, 
+                    Global_reactive_power, Kitchen, Laundry, `Air & Water`, Cost), funs(sum))
 
 
 
@@ -99,6 +105,8 @@ write.csv(HPC.month, "1.csv")
 
 
 #Plots
-ggplot(data=HPC.month, aes(x=Month, y=Global_power, group=Year,colour=Year)) +
+ggplot(data=HPC.season, aes(x=Season, y=Global_power, group=Year,colour=Year)) +
   geom_line()+theme_bw()+
   geom_point()+facet_grid(facets = Year ~ ., margins = FALSE)
+
+
